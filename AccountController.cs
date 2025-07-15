@@ -1,7 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
 using System;
 using System.Data.SqlClient;
-using WebApp.Models; 
+using WebApp.Models;
 
 namespace WebApp.Controllers
 {
@@ -46,7 +47,6 @@ namespace WebApp.Controllers
                 cmd.ExecuteNonQuery();
             }
 
-            // Chuyển sang trang đăng nhập sau khi đăng ký thành công
             return RedirectToAction("Login");
         }
 
@@ -67,26 +67,62 @@ namespace WebApp.Controllers
             {
                 conn.Open();
                 var cmd = new SqlCommand(@"
-                    SELECT COUNT(*) 
+                    SELECT id, username, real_name, role 
                     FROM [user] 
                     WHERE username = @Username AND password = @Password", conn);
 
                 cmd.Parameters.AddWithValue("@Username", model.Username);
                 cmd.Parameters.AddWithValue("@Password", model.Password);
 
-                int count = (int)cmd.ExecuteScalar();
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        // ✅ Lưu thông tin vào session
+                        HttpContext.Session.SetString("UserId", reader["id"].ToString());
+                        HttpContext.Session.SetString("Username", reader["username"].ToString());
+                        HttpContext.Session.SetString("RealName", reader["real_name"].ToString());
+                        HttpContext.Session.SetString("Role", reader["role"].ToString());
 
-                if (count > 0)
-                {
-                    // Đăng nhập thành công → chuyển hướng về trang chủ
-                    return RedirectToAction("Index", "Home");
-                }
-                else
-                {
-                    ModelState.AddModelError("", "Sai tên đăng nhập hoặc mật khẩu.");
-                    return View(model);
+                        return RedirectToAction("Index", "Home");
+                    }
+                    else
+                    {
+                        ModelState.AddModelError("", "Sai tên đăng nhập hoặc mật khẩu.");
+                        return View(model);
+                    }
                 }
             }
+        }
+
+        // ✅ GET: /Account/Logout
+        public IActionResult Logout()
+        {
+            HttpContext.Session.Clear(); // Xoá toàn bộ session
+            return RedirectToAction("Login");
+        }
+
+        // ✅ GET: /Account/GetUserInfo
+        public IActionResult GetUserInfo()
+        {
+            string username = HttpContext.Session.GetString("Username");
+
+            if (string.IsNullOrEmpty(username))
+                return Unauthorized(); // Chưa đăng nhập
+
+            string userId = HttpContext.Session.GetString("UserId");
+            string realName = HttpContext.Session.GetString("RealName");
+            string role = HttpContext.Session.GetString("Role");
+
+            var userInfo = new
+            {
+                Id = userId,
+                Username = username,
+                RealName = realName,
+                Role = role
+            };
+
+            return Json(userInfo); // trả về JSON thông tin người dùng
         }
     }
 }
